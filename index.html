@@ -239,7 +239,6 @@
             const [spellStatus, setSpellStatus] = useState('idle');
             const [spellResults, setSpellResults] = useState(null);
             const [spellOpen, setSpellOpen] = useState(false);
-            const [shareFallback, setShareFallback] = useState(false);
 
             // Autoguardado
             useEffect(() => {
@@ -568,34 +567,32 @@
             const exportarPDF = () => conPDF(({ pdf, filename }) => pdf.save(filename));
             const vistaPrevia = () => conPDF(({ pdf }) => window.open(pdf.output('bloburl'), '_blank'));
 
-            // Mensajes pre-escritos (WhatsApp y correo) con zona, fecha y N° de hallazgos
             const fechaTxt = () => data.fechaInspeccion ? data.fechaInspeccion.split('-').reverse().join('-') : '';
             const textoMsg = () => {
                 const zona = data.area ? ` — ${data.area}` : '';
                 const f = fechaTxt() ? ` del ${fechaTxt()}` : '';
                 return `Informe de Hallazgos${zona}${f}. ${data.hallazgos.length} hallazgo(s). Adjunto el PDF.`;
             };
-            const asuntoMail = () => `Informe de Hallazgos${data.area ? ' — ' + data.area : ''}${fechaTxt() ? ' (' + fechaTxt() + ')' : ''}`;
-            const cuerpoMail = () => `Estimados,\n\nAdjunto el Informe de Hallazgos${data.area ? ' de ' + data.area : ''}${fechaTxt() ? ' realizado el ' + fechaTxt() : ''}.\nN° de hallazgos: ${data.hallazgos.length}.\n\nSaludos,\n${data.elaboradoPor || ''}`;
-            const waURL = () => `https://wa.me/?text=${encodeURIComponent(textoMsg())}`;
-            const mailURL = () => `mailto:${CORREOS}?subject=${encodeURIComponent(asuntoMail())}&body=${encodeURIComponent(cuerpoMail())}`;
-
-            const enviarInforme = () => {
+            // ENVIAR: comparte el PDF adjunto directamente por el menú nativo del celular.
+            const enviarInforme = async () => {
                 if (typeof window.jspdf === 'undefined') { alert('Las herramientas aún se están cargando, intenta de nuevo en unos segundos.'); return; }
-                setShareFallback(true);
-            };
-            const descargarPDF = () => { try { const { pdf, filename } = buildPDF(); pdf.save(filename); } catch (e) { console.error(e); alert('Error al generar el PDF: ' + (e && e.message)); } };
-            const compartirNativo = async () => {
                 setIsGenerating(true);
+                let pdf, filename;
                 try {
-                    const { pdf, filename } = buildPDF();
+                    const built = buildPDF(); pdf = built.pdf; filename = built.filename;
                     const file = new File([pdf.output('blob')], filename, { type: 'application/pdf' });
                     if (navigator.canShare && navigator.canShare({ files: [file] })) {
                         await navigator.share({ files: [file], title: 'Informe de Hallazgos — Río Loa', text: textoMsg() });
-                        setShareFallback(false);
-                    } else { alert('Tu dispositivo no permite adjuntar el PDF directamente. Usa WhatsApp o Correo: el PDF se descarga y solo lo adjuntas.'); }
-                } catch (e) { if (!(e && e.name === 'AbortError')) { console.error(e); alert('No se pudo compartir: ' + (e && e.message)); } }
-                finally { setIsGenerating(false); }
+                    } else {
+                        pdf.save(filename);
+                        alert('Este navegador no permite compartir el PDF automáticamente, así que se descargó.\n\nPara que “ENVIAR” adjunte el PDF solo, abre la app en Chrome y úsala desde el ícono (Chrome: menú ⋮ → Agregar a pantalla de inicio).');
+                    }
+                } catch (e) {
+                    if (e && e.name === 'AbortError') { setIsGenerating(false); return; }
+                    console.error(e);
+                    try { if (pdf) pdf.save(filename || 'Informe_Hallazgos.pdf'); } catch (x) {}
+                    alert('No se pudo compartir automáticamente en este navegador; se descargó el PDF.\n\nÁbrela en Chrome para que se adjunte automáticamente.');
+                } finally { setIsGenerating(false); }
             };
 
             // ─────────── UI helpers ───────────
@@ -904,33 +901,6 @@
                         </div>
                     )}
 
-                    {/* ── HOJA DE ENVÍO ── */}
-                    {shareFallback && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 no-print">
-                            <div className="absolute inset-0 bg-black/40" onClick={() => setShareFallback(false)} />
-                            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-                                <div className="flex items-center gap-2 mb-1"><Send size={20} style={{ color: TEAL }} /><h3 className="font-black uppercase tracking-tight text-slate-700">Enviar informe</h3></div>
-                                <p className="text-sm text-slate-500 mb-4">Elige cómo enviarlo.</p>
-                                <div className="space-y-2">
-                                    {!!(typeof navigator !== 'undefined' && navigator.share) && (
-                                        <button onClick={compartirNativo} disabled={isGenerating} className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-bold text-white shadow transition" style={{ background: TEAL }}>
-                                            {isGenerating ? <Loader size={16} className="animate-spin" /> : <Send size={16} />} Compartir con el PDF adjunto
-                                        </button>
-                                    )}
-                                    <a href={waURL()} target="_blank" rel="noopener noreferrer" onClick={descargarPDF}
-                                       className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-bold text-white bg-green-600 hover:bg-green-700 transition">
-                                        <MessageCircle size={18} /> WhatsApp <span className="opacity-80 font-medium">(mensaje listo)</span>
-                                    </a>
-                                    <a href={mailURL()} onClick={descargarPDF}
-                                       className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-bold text-white" style={{ background: '#475569' }}>
-                                        <Mail size={18} /> Correo a Río Loa <span className="opacity-80 font-medium">(bplaza · vdonoso)</span>
-                                    </a>
-                                </div>
-                                <p className="text-xs text-slate-500 mt-3">En <b>WhatsApp</b> y <b>Correo</b> el mensaje ya va escrito; el PDF se descarga y solo lo <b>adjuntas</b>. “Compartir” (en celular) lo adjunta solo.</p>
-                                <button onClick={() => setShareFallback(false)} className="mt-3 w-full text-sm text-slate-400 hover:text-slate-700 font-semibold">Cerrar</button>
-                            </div>
-                        </div>
-                    )}
                 </div>
             );
         };
