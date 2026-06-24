@@ -553,8 +553,9 @@
                     pdf.text(`Página ${p} de ${total}`, PW - MR, PH - 5, { align: 'right' });
                 }
 
-                const tag = (data.area || data.fechaInspeccion || 'RioLoa').toString().replace(/[^\w]+/g, '_').slice(0, 30);
-                return { pdf, filename: `Informe_Hallazgos_${tag}.pdf` };
+                const quien = (data.elaboradoPor || 'Responsable').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+                const fechaF = data.fechaInspeccion ? data.fechaInspeccion.split('-').reverse().join('-') : '';
+                return { pdf, filename: `Informe Hallazgos - ${quien}${fechaF ? ' - ' + fechaF : ''}.pdf` };
             };
 
             const conPDF = (accion) => {
